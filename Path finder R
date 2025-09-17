@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draw Preferred Path</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #F8FAFC;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        #drawing-container {
+            position: relative;
+            width: 100%;
+            max-width: 1200px; /* Increased max-width for screenshots */
+            border: 2px solid #1E40AF;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+            background-color: white;
+            overflow: hidden;
+        }
+        #drawing-image {
+            display: block;
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+        }
+        #drawing-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+        #instructions {
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #334155;
+            text-align: center;
+        }
+        #save-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #10B981;
+            color: white;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+        #save-btn:hover {
+            background-color: #059669;
+        }
+    </style>
+</head>
+<body>
+
+    <h1 id="instructions">Click on the image to draw the preferred path.</h1>
+    <div id="drawing-container">
+        <img id="drawing-image">
+        <canvas id="drawing-canvas"></canvas>
+    </div>
+    <button id="save-btn">Save Path and Close</button>
+
+    <script>
+        const drawingImage = document.getElementById('drawing-image');
+        const drawingCanvas = document.getElementById('drawing-canvas');
+        const saveBtn = document.getElementById('save-btn');
+        let preferredPath = [];
+
+        window.onload = () => {
+            const imageUrl = localStorage.getItem('path-drawer-image-data');
+            if (imageUrl) {
+                drawingImage.src = imageUrl;
+                drawingImage.onload = () => {
+                    const imgNaturalWidth = drawingImage.naturalWidth;
+                    const imgNaturalHeight = drawingImage.naturalHeight;
+                    
+                    drawingCanvas.width = imgNaturalWidth;
+                    drawingCanvas.height = imgNaturalHeight;
+
+                    const container = document.getElementById('drawing-container');
+                    container.style.paddingTop = `${(imgNaturalHeight / imgNaturalWidth) * 100}%`;
+                };
+            }
+        };
+
+        drawingCanvas.addEventListener('click', (e) => {
+            const rect = drawingCanvas.getBoundingClientRect();
+            const scaleFactorX = drawingImage.naturalWidth / rect.width;
+            const scaleFactorY = drawingImage.naturalHeight / rect.height;
+            const x = (e.clientX - rect.left) * scaleFactorX;
+            const y = (e.clientY - rect.top) * scaleFactorY;
+            
+            preferredPath.push({ x: x, y: y });
+            drawPath();
+        });
+
+        function drawPath() {
+            const ctx = drawingCanvas.getContext('2d');
+            ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            
+            const rect = drawingImage.getBoundingClientRect();
+            const scaleX = rect.width / drawingImage.naturalWidth;
+            const scaleY = rect.height / drawingImage.naturalHeight;
+
+            ctx.beginPath();
+            ctx.strokeStyle = '#1E40AF';
+            ctx.lineWidth = 4;
+            ctx.lineJoin = 'round';
+            if (preferredPath.length > 0) {
+                ctx.moveTo(preferredPath[0].x * scaleX, preferredPath[0].y * scaleY);
+                preferredPath.forEach((p, i) => {
+                    ctx.lineTo(p.x * scaleX, p.y * scaleY);
+                    
+                    ctx.fillStyle = '#1E40AF';
+                    ctx.beginPath();
+                    ctx.arc(p.x * scaleX, p.y * scaleY, 10, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    ctx.fillStyle = 'white';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = '12px Inter';
+                    ctx.fillText(i + 1, p.x * scaleX, p.y * scaleY);
+                });
+                ctx.stroke();
+            }
+        }
+        
+        saveBtn.addEventListener('click', () => {
+            if (window.opener && window.opener.receivePathData) {
+                window.opener.receivePathData(preferredPath);
+                window.close();
+            } else {
+                alert('An error occurred. Please try again from the dashboard.');
+            }
+        });
+
+        window.addEventListener('resize', drawPath);
+    </script>
+</body>
+</html>
