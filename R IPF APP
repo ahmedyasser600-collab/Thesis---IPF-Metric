@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GazeTrack Insight - Developer Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-heatmap@1.0.0/simple-heatmap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1E40AF;
+            --secondary: #8B5CF6;
+            --accent: #3B82F6;
+            --surface: rgba(255, 255, 255, 0.9);
+            --shadow-soft: 0 8px 32px rgba(0, 0, 0, 0.1);
+            --shadow-medium: 0 12px 48px rgba(0, 0, 0, 0.15);
+            --border-radius: 16px;
+            --border-radius-lg: 24px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%);
+            color: #1E293B;
+        }
+        .brand-header {
+            background: linear-gradient(135deg, var(--surface) 0%, rgba(255, 255, 255, 0.7) 100%);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: var(--border-radius-lg);
+            padding: 24px 32px;
+            margin: 20px;
+            box-shadow: var(--shadow-soft);
+        }
+        .brand-info h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .glass-card {
+            background: var(--surface);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-soft);
+            padding: 24px;
+            margin: 16px;
+        }
+        .settings-panel {
+            background: linear-gradient(135deg, #F8FAFC 0%, white 100%);
+            border: 1px solid rgba(226, 232, 240, 0.6);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            margin: 16px 0;
+            box-shadow: var(--shadow-soft);
+        }
+        .metric-card {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            border-radius: var(--border-radius);
+            padding: 24px;
+            text-align: center;
+            box-shadow: var(--shadow-soft);
+        }
+        .metric-value {
+            font-size: 2.8rem;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+        .plot-container {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-soft);
+            padding: 24px;
+            margin-top: 24px;
+            border: 1px solid rgba(226, 232, 240, 0.6);
+        }
+        .visualization-area {
+            position: relative;
+            width: 100%;
+            padding-top: 75%; /* 4:3 Aspect Ratio (600/800) */
+            background-color: #F1F5F9;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+        .visualization-area img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        #preferred_path_canvas, #gaze_canvas, #heatmap_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #heatmap_canvas { opacity: 0.6; }
+        .interpretation-panel {
+            background: linear-gradient(135deg, #F8FAFC 0%, white 100%);
+            border: 1px solid rgba(226, 232, 240, 0.6);
+            border-radius: var(--border-radius);
+            padding: 28px;
+            margin-top: 24px;
+            box-shadow: var(--shadow-soft);
+        }
+        .alert-modern {
+            border: none;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin: 16px 0;
+            font-weight: 500;
+        }
+        .alert-success { background: #ECFDF5; color: #065F46; border-left: 4px solid #10B981; }
+        .alert-warning { background: #FEF3C7; color: #92400E; border-left: 4px solid #F59E0B; }
+        .alert-danger { background: #FEF2F2; color: #991B1B; border-left: 4px solid #EF4444; }
+
+        /* Path Drawing Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 90%;
+            max-height: 90%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #path-drawing-image {
+            max-width: 100%;
+            height: auto;
+            object-fit: contain;
+        }
+        #path-drawing-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: crosshair;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div id="path-drawing-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold mb-4 text-blue-800">Define Preferred Path</h2>
+            <p class="text-slate-600 mb-4">Click on the image to set points for the path.</p>
+            <div id="drawing-area-container" class="relative w-full max-h-[70vh] overflow-hidden">
+                <img id="path-drawing-image">
+                <canvas id="path-drawing-canvas"></canvas>
+            </div>
+            <div class="mt-4 space-x-4">
+                <button id="save-path-btn" class="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600">Save Path</button>
+                <button id="clear-path-btn" class="bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600">Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <header class="brand-header flex flex-col md:flex-row items-center gap-5 md:gap-8">
+        <div class="logo-container">
+            <svg viewBox="0 0 420 100" width="210" height="50" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="eyeGradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#3B82F6"/><stop offset="50%" stop-color="#1D4ED8"/><stop offset="100%" stop-color="#1E40AF"/></linearGradient>
+                    <linearGradient id="dataGradient" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#8B5CF6"/><stop offset="100%" stop-color="#A855F7"/></linearGradient>
+                </defs>
+                <circle cx="50" cy="50" r="45" fill="url(#eyeGradient)" opacity="0.1"/>
+                <path d="M 20 50 Q 50 25 80 50 Q 50 75 20 50 Z" fill="none" stroke="url(#eyeGradient)" stroke-width="3"/>
+                <circle cx="50" cy="50" r="18" fill="url(#eyeGradient)" opacity="0.8"/>
+                <circle cx="50" cy="50" r="12" fill="url(#eyeGradient)"/>
+                <circle cx="50" cy="50" r="6" fill="#0F172A"/>
+                <ellipse cx="46" cy="46" rx="2" ry="3" fill="white" opacity="0.9"/>
+                <circle cx="85" cy="35" r="2" fill="url(#dataGradient)" opacity="0.6"/><circle cx="90" cy="42" r="1.5" fill="url(#dataGradient)" opacity="0.4"/>
+                <circle cx="82" cy="28" r="1" fill="url(#dataGradient)" opacity="0.8"/>
+                <path d="M 80 50 Q 85 35 90 42" fill="none" stroke="url(#dataGradient)" stroke-width="1" opacity="0.5"/>
+                <path d="M 85 35 L 82 28" fill="none" stroke="url(#dataGradient)" stroke-width="1" opacity="0.5"/>
+                <rect x="85" y="55" width="3" height="12" fill="url(#dataGradient)" opacity="0.7"/>
+                <rect x="90" y="60" width="3" height="7" fill="url(#dataGradient)" opacity="0.7"/>
+                <rect x="95" y="58" width="3" height="9" fill="url(#dataGradient)" opacity="0.7"/>
+                <text x="115" y="40" font-family="Inter, sans-serif" font-size="28" font-weight="700" fill="#1E40AF">GazeTrack</text>
+                <text x="115" y="60" font-family="Inter, sans-serif" font-size="18" font-weight="500" fill="#8B5CF6">Insight</text>
+                <text x="115" y="75" font-family="Inter, sans-serif" font-size="10" font-weight="400" fill="#6B7280">UX Research & Analytics</text>
+            </svg>
+        </div>
+        <div class="brand-info">
+            <h1>Eye-Tracking Analysis Platform</h1>
+            <p class="text-slate-600">Advanced UX Research & Gaze Analytics</p>
+        </div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div class="lg:col-span-1 space-y-6">
+            <div class="glass-card">
+                <h4 class="text-lg font-semibold text-blue-800 mb-6">📊 Experiment Management</h4>
+
+                <div id="session-setup" class="space-y-4">
+                    <label for="session-name" class="block text-sm font-medium text-slate-700">Session Name</label>
+                    <input type="text" id="session-name" class="w-full p-2 border rounded-md" placeholder="e.g., Q3 Website Redesign">
+
+                    <label for="session-desc" class="block text-sm font-medium text-slate-700">Description</label>
+                    <textarea id="session-desc" class="w-full p-2 border rounded-md h-20" placeholder="A brief description of the experiment."></textarea>
+                    
+                    <button id="create-session-btn" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-all">
+                        Create New Session
+                    </button>
+
+                    <div id="session-link-area" class="mt-4 p-4 bg-slate-100 rounded-md hidden">
+                        <p class="text-sm font-medium text-slate-700">Share this link:</p>
+                        <a id="session-link" href="#" target="_blank" class="block truncate text-blue-500 hover:underline"></a>
+                        <button id="copy-link-btn" class="mt-2 w-full bg-slate-300 text-slate-800 font-semibold py-1 px-2 rounded-md text-sm hover:bg-slate-400">
+                            Copy Link
+                        </button>
+                    </div>
+                </div>
+
+                <div id="stimulus-setup" class="mt-8 space-y-4 hidden">
+                    <h5 class="text-lg font-semibold text-blue-800">🖼️ Add Stimulus & Preferred Path</h5>
+                    <label for="stimulus-file" class="block text-sm font-medium text-slate-700">Upload Stimulus Picture</label>
+                    <input type="file" id="stimulus-file" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    
+                    <p class="text-sm text-slate-500 mt-2">Or paste a URL for the stimulus picture below:</p>
+                    <input type="text" id="stimulus-url" class="w-full p-2 border rounded-md" placeholder="e.g., https://yoursite.com/image.jpg">
+                    <div class="text-xs text-slate-400 mt-1">
+                        <p><strong>Tip:</strong> For best results with URLs:</p>
+                        <ul class="list-disc list-inside ml-2">
+                            <li>Use direct image links ending in .jpg, .png, .webp</li>
+                            <li>For Imgur: Use direct links like i.imgur.com/abc123.jpg</li>
+                            <li>Avoid imgur.com/abc123 (use i.imgur.com/abc123.jpg instead)</li>
+                            <li>Or try other hosts: GitHub, your own website, etc.</li>
+                        </ul>
+                    </div>
+                    
+                    <button id="draw-path-btn" class="w-full bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-all">
+                        Load Stimulus to Draw Path
+                    </button>
+                    <button id="add-stimulus-to-session-btn" class="w-full bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-600 transition-all hidden">
+                        Add Stimulus to Session
+                    </button>
+                </div>
+            </div>
+
+            <div id="analysis-sidebar" class="glass-card hidden">
+                <h4 class="text-lg font-semibold text-blue-800 mb-4">📈 Analysis & Results</h4>
+                <div class="space-y-4">
+                    <div>
+                        <label for="session-select" class="block text-sm font-medium text-slate-700">Select Session</label>
+                        <select id="session-select" class="w-full p-2 border rounded-md"></select>
+                    </div>
+                    <div>
+                        <label for="stimulus-select" class="block text-sm font-medium text-slate-700">Select Stimulus</label>
+                        <select id="stimulus-select" class="w-full p-2 border rounded-md"></select>
+                    </div>
+                    <div>
+                        <label for="filter-country" class="block text-sm font-medium text-slate-700">Filter by Country</label>
+                        <select id="filter-country" class="w-full p-2 border rounded-md"></select>
+                    </div>
+                    <div>
+                        <label for="filter-gender" class="block text-sm font-medium text-slate-700">Filter by Gender</label>
+                        <select id="filter-gender" class="w-full p-2 border rounded-md"></select>
+                    </div>
+                    <button id="refresh-data-btn" class="w-full bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-purple-700 transition-all">
+                        Refresh & Analyze Data
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-2 space-y-8">
+            <div id="main-content-placeholder" class="glass-card p-6 text-center text-slate-500 font-medium">
+                Create a session and load a stimulus to begin.
+            </div>
+
+            <div id="analysis-dashboard" class="hidden">
+                <div id="metrics_dashboard" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    <div class="metric-card">
+                        <div class="text-2xl mb-2">📏</div>
+                        <div id="avg_deviation" class="metric-value">0px</div>
+                        <div class="metric-label">Average Deviation</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="text-2xl mb-2">📊</div>
+                        <div id="max_deviation" class="metric-value">0px</div>
+                        <div class="metric-label">Maximum Deviation</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="text-2xl mb-2">🎯</div>
+                        <div id="accuracy_score" class="metric-value">0%</div>
+                        <div class="metric-label">Accuracy Score</div>
+                    </div>
+                </div>
+
+                <div class="plot-container">
+                    <div class="plot-header">📈 Interactive Gaze Analysis Visualization</div>
+                    <div class="visualization-area">
+                        <img id="analysis_stimulus_image" src="" alt="Analysis Image">
+                        <canvas id="analysis_heatmap_canvas"></canvas>
+                        <canvas id="analysis_gaze_canvas"></canvas>
+                        <canvas id="analysis_preferred_canvas"></canvas>
+                    </div>
+                </div>
+
+                <div id="interpretation_panel" class="interpretation-panel">
+                    <h4 class="text-xl mb-4">🧠 AI-Powered Analysis & Insights</h4>
+                    <div id="interpretation_output"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dashboardState = {
+            currentSessionId: null,
+            currentStimulusUrl: null,
+            currentPreferredPath: null,
+            sessions: JSON.parse(localStorage.getItem('gazeTrackSessions')) || {}
+        };
+
+        const sessionNameInput = document.getElementById('session-name');
+        const sessionDescInput = document.getElementById('session-desc');
+        const createSessionBtn = document.getElementById('create-session-btn');
+        const sessionLinkArea = document.getElementById('session-link-area');
+        const sessionLink = document.getElementById('session-link');
+        const copyLinkBtn = document.getElementById('copy-link-btn');
+        const stimulusSetup = document.getElementById('stimulus-setup');
+        const stimulusFileInput = document.getElementById('stimulus-file');
+        const stimulusUrlInput = document.getElementById('stimulus-url');
+        const drawPathBtn = document.getElementById('draw-path-btn');
+        const addStimulusToSessionBtn = document.getElementById('add-stimulus-to-session-btn');
+        const pathDrawingModal = document.getElementById('path-drawing-modal');
+        const pathDrawingImage = document.getElementById('path-drawing-image');
+        const pathDrawingCanvas = document.getElementById('path-drawing-canvas');
+        const savePathBtn = document.getElementById('save-path-btn');
+        const clearPathBtn = document.getElementById('clear-path-btn');
+        const analysisSidebar = document.getElementById('analysis-sidebar');
+        const analysisDashboard = document.getElementById('analysis-dashboard');
+        const mainContentPlaceholder = document.getElementById('main-content-placeholder');
+        const sessionSelect = document.getElementById('session-select');
+        const stimulusSelect = document.getElementById('stimulus-select');
+        const filterCountry = document.getElementById('filter-country');
+        const filterGender = document.getElementById('filter-gender');
+        const refreshDataBtn = document.getElementById('refresh-data-btn');
+        const analysisStimulusImage = document.getElementById('analysis_stimulus_image');
+        const analysisHeatmapCanvas = document.getElementById('analysis_heatmap_canvas');
+        const analysisGazeCanvas = document.getElementById('analysis_gaze_canvas');
+        const analysisPreferredCanvas = document.getElementById('analysis_preferred_canvas');
+        const avgDeviationEl = document.getElementById('avg_deviation');
+        const maxDeviationEl = document.getElementById('max_deviation');
+        const accuracyScoreEl = document.getElementById('accuracy_score');
+        const interpretationOutput = document.getElementById('interpretation_output');
+
+        let drawingCtx;
+        let drawingPathPoints = [];
+
+        function saveSessions() {
+            try {
+                // Create a lightweight copy of sessions for storage (without large images)
+                const sessionsToStore = {};
+                Object.keys(dashboardState.sessions).forEach(sessionId => {
+                    sessionsToStore[sessionId] = {
+                        ...dashboardState.sessions[sessionId],
+                        stimuli: dashboardState.sessions[sessionId].stimuli.map(stimulus => ({
+                            url: stimulus.url.startsWith('data:') ? '[LARGE_IMAGE_DATA]' : stimulus.url,
+                            preferred_path: stimulus.preferred_path,
+                            originalUrl: stimulus.url // Keep reference but don't store the full data
+                        }))
+                    };
+                });
+                
+                localStorage.setItem('gazeTrackSessions', JSON.stringify(sessionsToStore));
+                
+                // Also save each session individually for direct participant access
+                Object.keys(sessionsToStore).forEach(sessionId => {
+                    localStorage.setItem(sessionId, JSON.stringify(sessionsToStore[sessionId]));
+                });
+                
+                console.log('Sessions saved successfully');
+            } catch (error) {
+                console.error('Failed to save sessions:', error);
+                alert('Warning: Unable to save session data. Your browser storage might be full. Consider using image URLs instead of uploading files.');
+            }
+        }
+
+        function createSession() {
+            const name = sessionNameInput.value.trim();
+            if (!name) return alert('Please enter a session name.');
+            dashboardState.currentSessionId = 'session_' + Date.now();
+            dashboardState.sessions[dashboardState.currentSessionId] = {
+                name: name,
+                description: sessionDescInput.value,
+                stimuli: [],
+                participants: {}
+            };
+            saveSessions();
+            sessionLink.href = `index.html?session=${dashboardState.currentSessionId}`;
+            sessionLink.textContent = sessionLink.href;
+            sessionLinkArea.classList.remove('hidden');
+            stimulusSetup.classList.remove('hidden');
+            mainContentPlaceholder.classList.add('hidden');
+            analysisSidebar.classList.remove('hidden');
+            populateSessionSelect();
+            alert('Session created! Share the link with participants.');
+        }
+
+        function drawPathInModal() {
+            drawingCtx.clearRect(0, 0, pathDrawingCanvas.width, pathDrawingCanvas.height);
+            
+            const rect = pathDrawingImage.getBoundingClientRect();
+            const scaleX = rect.width / pathDrawingImage.naturalWidth;
+            const scaleY = rect.height / pathDrawingImage.naturalHeight;
+
+            drawingCtx.beginPath();
+            drawingCtx.strokeStyle = '#1E40AF';
+            drawingCtx.lineWidth = 4;
+            drawingCtx.lineJoin = 'round';
+            if (drawingPathPoints.length > 0) {
+                drawingCtx.moveTo(drawingPathPoints[0].x * scaleX, drawingPathPoints[0].y * scaleY);
+                drawingPathPoints.forEach((p, i) => {
+                    drawingCtx.lineTo(p.x * scaleX, p.y * scaleY);
+                    
+                    drawingCtx.fillStyle = '#1E40AF';
+                    drawingCtx.beginPath();
+                    drawingCtx.arc(p.x * scaleX, p.y * scaleY, 10, 0, 2 * Math.PI);
+                    drawingCtx.fill();
+
+                    drawingCtx.fillStyle = 'white';
+                    drawingCtx.textAlign = 'center';
+                    drawingCtx.textBaseline = 'middle';
+                    drawingCtx.font = '12px Inter';
+                    drawingCtx.fillText(i + 1, p.x * scaleX, p.y * scaleY);
+                });
+                drawingCtx.stroke();
+            }
+        }
+
+        function openPathDrawingModal() {
+            const file = stimulusFileInput.files[0];
+            const url = stimulusUrlInput.value.trim();
+            let stimulusSource;
+            
+            if (!file && !url) {
+                return alert('Please upload a stimulus picture or enter a URL.');
+            }
+
+            if (file) {
+                // Check actual file size before processing
+                const fileSizeMB = file.size / (1024 * 1024);
+                if (fileSizeMB > 2) {
+                    const proceed = confirm(`File size is ${fileSizeMB.toFixed(1)}MB. Large files may cause storage issues. Continue anyway?`);
+                    if (!proceed) return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    stimulusSource = e.target.result;
+                    startPathDrawing(stimulusSource);
+                };
+                reader.readAsDataURL(file);
+            } else if (url) {
+                // For URLs, we need to handle CORS issues
+                stimulusSource = url;
+                
+                // Test if the image can be loaded
+                const testImg = new Image();
+                testImg.crossOrigin = "anonymous"; // Try to enable CORS
+                testImg.onload = function() {
+                    startPathDrawing(stimulusSource);
+                };
+                testImg.onerror = function() {
+                    // If CORS fails, try without crossOrigin
+                    const testImg2 = new Image();
+                    testImg2.onload = function() {
+                        startPathDrawing(stimulusSource);
+                    };
+                    testImg2.onerror = function() {
+                        alert('Unable to load image from this URL. The image may not be publicly accessible or the server blocks cross-origin requests. Try uploading the image file instead, or use a different image hosting service.');
+                    };
+                    testImg2.src = stimulusSource;
+                };
+                testImg.src = stimulusSource;
+            }
+        }
+
+        function startPathDrawing(stimulusSource) {
+            dashboardState.currentStimulusUrl = stimulusSource;
+            pathDrawingImage.src = stimulusSource;
+            drawingPathPoints = [];
+            
+            // Handle CORS for external URLs
+            if (!stimulusSource.startsWith('data:')) {
+                pathDrawingImage.crossOrigin = "anonymous";
+            }
+            
+            pathDrawingImage.onload = () => {
+                pathDrawingCanvas.width = pathDrawingImage.naturalWidth;
+                pathDrawingCanvas.height = pathDrawingImage.naturalHeight;
+                drawingCtx = pathDrawingCanvas.getContext('2d');
+                pathDrawingModal.classList.remove('hidden');
+                drawPathInModal();
+            };
+            
+            pathDrawingImage.onerror = () => {
+                alert('Failed to load the image. If using a URL, make sure the image is publicly accessible.');
+                dashboardState.currentStimulusUrl = null;
+            };
+        }
+
+        function savePathAndClose() {
+            if (drawingPathPoints.length < 2) {
+                return alert('Please click at least 2 points to define a path.');
+            }
+            dashboardState.currentPreferredPath = drawingPathPoints.map(p => ({ x: p.x, y: p.y }));
+            pathDrawingModal.classList.add('hidden');
+            addStimulusToSessionBtn.classList.remove('hidden');
+            alert('Preferred path saved. Click "Add Stimulus to Session" to finalize.');
+        }
+
+        function addStimulusToSession() {
+            if (!dashboardState.currentStimulusUrl || !dashboardState.currentPreferredPath) {
+                return alert('Please load a stimulus and define a path first.');
+            }
+            if (!dashboardState.currentSessionId) {
+                return alert('Please create a session first.');
+            }
+            
+            const session = dashboardState.sessions[dashboardState.currentSessionId];
+            if (!session) {
+                return alert('Session not found. Please create a new session.');
+            }
+            
+            // Better size detection - check actual file size for uploads, estimate for base64
+            let isLargeImage = false;
+            if (dashboardState.currentStimulusUrl.startsWith('data:')) {
+                // For base64, estimate the original file size (base64 is ~33% larger)
+                const base64Length = dashboardState.currentStimulusUrl.length;
+                const estimatedFileSize = (base64Length * 0.75) / (1024 * 1024); // Convert to MB
+                isLargeImage = estimatedFileSize > 1; // 1MB threshold
+                
+                if (isLargeImage) {
+                    const proceed = confirm(`Estimated file size is ${estimatedFileSize.toFixed(1)}MB. This may cause storage issues. Consider using a smaller image or an image URL instead. Continue anyway?`);
+                    if (!proceed) return;
+                }
+            }
+            
+            session.stimuli.push({
+                url: dashboardState.currentStimulusUrl,
+                preferred_path: dashboardState.currentPreferredPath
+            });
+            
+            // Save to localStorage with error handling
+            try {
+                saveSessions();
+                
+                // Debug log to verify data is saved
+                console.log('Session saved:', dashboardState.currentSessionId, session);
+                console.log('Stimuli count:', session.stimuli.length);
+                
+                // Update the UI to show success
+                alert(`Stimulus and preferred path added successfully! Session has ${session.stimuli.length} stimuli.`);
+                populateStimulusSelect(dashboardState.currentSessionId);
+                
+                // Reset the form for next stimulus
+                stimulusFileInput.value = '';
+                stimulusUrlInput.value = '';
+                dashboardState.currentStimulusUrl = null;
+                dashboardState.currentPreferredPath = null;
+                addStimulusToSessionBtn.classList.add('hidden');
+                
+                // Update the session selector to show the current session
+                sessionSelect.value = dashboardState.currentSessionId;
+                
+            } catch (error) {
+                console.error('Failed to save stimulus:', error);
+                if (error.name === 'QuotaExceededError') {
+                    alert('Storage quota exceeded! Please:\n1. Use smaller images\n2. Use image URLs instead of file uploads\n3. Clear browser storage\n4. Try compressing images further');
+                } else {
+                    alert('Failed to save stimulus: ' + error.message);
+                }
+                // Remove the stimulus we just added since it couldn't be saved
+                session.stimuli.pop();
+            }
+        }
+
+        pathDrawingCanvas.addEventListener('click', (e) => {
+            const rect = pathDrawingImage.getBoundingClientRect();
+            const scaleX = pathDrawingImage.naturalWidth / rect.width;
+            const scaleY = pathDrawingImage.naturalHeight / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+            
+            drawingPathPoints.push({ x: x, y: y });
+            drawPathInModal();
+        });
+
+        function populateSessionSelect() {
+            sessionSelect.innerHTML = `<option value="">Select a Session</option>`;
+            Object.keys(dashboardState.sessions).forEach(id => {
+                const session = dashboardState.sessions[id];
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = session.name;
+                sessionSelect.appendChild(option);
+            });
+        }
+
+        function populateStimulusSelect(sessionId) {
+            stimulusSelect.innerHTML = `<option value="">Select a Stimulus</option>`;
+            const session = dashboardState.sessions[sessionId];
+            if (session && session.stimuli) {
+                session.stimuli.forEach((stimulus, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = stimulus.url.startsWith('data:') ? `Image ${index + 1}` : stimulus.url.split('/').pop().split('?')[0];
+                    stimulusSelect.appendChild(option);
+                });
+            }
+        }
+
+        function populateFilters(participants) {
+            const countries = [...new Set(Object.values(participants).map(p => p.demographics.country))];
+            const genders = [...new Set(Object.values(participants).map(p => p.demographics.gender))];
+            filterCountry.innerHTML = `<option value="">All Countries</option>` + countries.map(c => `<option value="${c}">${c}</option>`).join('');
+            filterGender.innerHTML = `<option value="">All Genders</option>` + genders.map(g => `<option value="${g}">${g}</option>`).join('');
+        }
+
+        function analyzeData() {
+            const sessionId = sessionSelect.value;
+            const stimulusIndex = stimulusSelect.value;
+            if (!sessionId || !stimulusIndex) return alert('Please select a session and stimulus.');
+
+            const session = dashboardState.sessions[sessionId];
+            const stimulus = session.stimuli[stimulusIndex];
+            const participants = session.participants;
+
+            populateFilters(participants);
+
+            let filteredParticipants = Object.values(participants);
+            if (filterCountry.value) filteredParticipants = filteredParticipants.filter(p => p.demographics.country === filterCountry.value);
+            if (filterGender.value) filteredParticipants = filteredParticipants.filter(p => p.demographics.gender === filterGender.value);
+
+            const allGazePoints = filteredParticipants.flatMap(p => p.gazeData[stimulus.url] ? p.gazeData[stimulus.url].gaze_points : []);
+            
+            if (allGazePoints.length === 0) {
+                 analysisDashboard.classList.add('hidden');
+                 mainContentPlaceholder.classList.remove('hidden');
+                 mainContentPlaceholder.textContent = 'No gaze data found for the selected filters.';
+                 return;
+            }
+
+            const metrics = calculateMetrics(stimulus.preferred_path, allGazePoints);
+            
+            avgDeviationEl.textContent = `${metrics.avg_dist.toFixed(1)}px`;
+            maxDeviationEl.textContent = `${metrics.max_dist.toFixed(1)}px`;
+            accuracyScoreEl.textContent = `${metrics.accuracy.toFixed(1)}%`;
+            interpretationOutput.innerHTML = generateAIInterpretation(metrics, { analysis_method: 'ml_advanced' });
+            
+            analysisStimulusImage.src = stimulus.url;
+            analysisStimulusImage.onload = () => {
+                analysisHeatmapCanvas.width = analysisGazeCanvas.width = analysisPreferredCanvas.width = analysisStimulusImage.naturalWidth;
+                analysisHeatmapCanvas.height = analysisGazeCanvas.height = analysisPreferredCanvas.height = analysisStimulusImage.naturalHeight;
+                drawAnalysisVisualization(stimulus.preferred_path, allGazePoints);
+            };
+
+            analysisDashboard.classList.remove('hidden');
+            mainContentPlaceholder.classList.add('hidden');
+        }
+
+        function calculateMetrics(preferred, participants) {
+            if (!preferred || preferred.length === 0 || !participants || participants.length === 0) return { avg_dist: 0, max_dist: 0, accuracy: 0 };
+            
+            const distances = participants.map(p_point => {
+                const closest_dist = preferred.reduce((min_dist, path_point) => {
+                    const dist = Math.sqrt(Math.pow(p_point.x - path_point.x, 2) + Math.pow(p_point.y - path_point.y, 2));
+                    return Math.min(min_dist, dist);
+                }, Infinity);
+                return closest_dist;
+            });
+            const avg_dist = distances.reduce((sum, dist) => sum + dist, 0) / distances.length;
+            const max_dist = Math.max(...distances);
+            const totalPathLength = preferred.reduce((sum, p, i, arr) => i > 0 ? sum + Math.sqrt(Math.pow(p.x - arr[i-1].x, 2) + Math.pow(p.y - arr[i-1].y, 2)) : 0, 0);
+            const accuracy = Math.max(0, (1 - avg_dist / (totalPathLength || 1)) * 100);
+            return { avg_dist, max_dist, accuracy, total_points: participants.length, distances };
+        }
+
+        function generateAIInterpretation(metrics, settings) {
+            let performance = '';
+            if (metrics.accuracy >= 80) performance = `<div class='alert-modern alert-success'><strong>Excellent Performance:</strong> Participants showed high adherence to the preferred path with exceptional accuracy.</div>`;
+            else if (metrics.accuracy >= 60) performance = `<div class='alert-modern alert-success'><strong>Good Performance:</strong> Participants generally followed the preferred path with good accuracy.</div>`;
+            else if (metrics.accuracy >= 40) performance = `<div class='alert-modern alert-warning'><strong>Moderate Performance:</strong> Some deviation from preferred path detected. Consider UX improvements.</div>`;
+            else performance = `<div class='alert-modern alert-danger'><strong>Attention Required:</strong> Significant deviation from preferred path. UX redesign may be necessary.</div>`;
+            const avg_dist_msg = `The average deviation of ${metrics.avg_dist.toFixed(1)}px suggests ${metrics.avg_dist < 50 ? 'tight clustering' : 'moderate dispersion'} around the preferred path. This indicates a ${metrics.avg_dist < 50 ? 'clear and intuitive' : 'more exploratory or less intuitive'} user experience.`;
+            const recommendations = `<div style='background: #EFF6FF; padding: 20px; border-radius: 12px; margin-top: 20px;'>
+                <h5 class='text-blue-800 font-semibold mb-3'>🎯 Actionable Recommendations:</h5>
+                <ul class='list-disc list-inside space-y-2 text-sm text-slate-700'>
+                    <li><strong>Visual Hierarchy:</strong> Strengthen visual cues along the preferred path to guide user attention more effectively.</li>
+                    <li><strong>A/B Testing:</strong> Test alternative layouts to improve path adherence and reduce cognitive load.</li>
+                    <li><strong>Outlier Analysis:</strong> Investigate user behavior at points of high deviation to identify usability barriers.</li>
+                </ul>
+            </div>`;
+            return `${performance}<p>${avg_dist_msg}</p>${recommendations}`;
+        }
+
+        function drawAnalysisVisualization(preferredPath, gazePoints) {
+            const preferredCtx = analysisPreferredCanvas.getContext('2d');
+            const gazeCtx = analysisGazeCanvas.getContext('2d');
+            
+            preferredCtx.clearRect(0, 0, preferredCtx.canvas.width, preferredCtx.canvas.height);
+            gazeCtx.clearRect(0, 0, gazeCtx.canvas.width, gazeCtx.canvas.height);
+            analysisHeatmapCanvas.getContext('2d').clearRect(0, 0, analysisHeatmapCanvas.width, analysisHeatmapCanvas.height);
+
+            const scaleX = analysisGazeCanvas.width / analysisStimulusImage.naturalWidth;
+            const scaleY = analysisGazeCanvas.height / analysisStimulusImage.naturalHeight;
+
+            if (preferredPath && preferredPath.length > 1) {
+                preferredCtx.beginPath();
+                preferredCtx.strokeStyle = '#1E40AF';
+                preferredCtx.lineWidth = 4;
+                preferredCtx.lineJoin = 'round';
+                preferredCtx.moveTo(preferredPath[0].x * scaleX, preferredPath[0].y * scaleY);
+                preferredPath.forEach(p => preferredCtx.lineTo(p.x * scaleX, p.y * scaleY));
+                preferredCtx.stroke();
+            }
+
+            gazePoints.forEach(p => {
+                gazeCtx.beginPath();
+                gazeCtx.fillStyle = 'rgba(239, 68, 68, 0.6)';
+                gazeCtx.arc(p.x * scaleX, p.y * scaleY, 4, 0, 2 * Math.PI);
+                gazeCtx.fill();
+            });
+
+            if (gazePoints.length > 0) {
+                const heatmap = simpleHeatmap(analysisHeatmapCanvas);
+                const points = gazePoints.map(p => [p.x * scaleX, p.y * scaleY, 1]);
+                heatmap.addData(points);
+                heatmap.draw();
+            }
+        }
+
+        // Event Listeners
+        createSessionBtn.addEventListener('click', createSession);
+        drawPathBtn.addEventListener('click', openPathDrawingModal);
+        savePathBtn.addEventListener('click', savePathAndClose);
+        clearPathBtn.addEventListener('click', () => { drawingPathPoints = []; drawPathInModal(); });
+        addStimulusToSessionBtn.addEventListener('click', addStimulusToSession);
+        copyLinkBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(sessionLink.href).then(() => {
+                copyLinkBtn.textContent = 'Copied!';
+                setTimeout(() => copyLinkBtn.textContent = 'Copy Link', 2000);
+            });
+        });
+
+        sessionSelect.addEventListener('change', (e) => {
+            const sessionId = e.target.value;
+            if (sessionId) {
+                populateStimulusSelect(sessionId);
+            } else {
+                stimulusSelect.innerHTML = `<option value="">Select a Stimulus</option>`;
+            }
+        });
+
+        refreshDataBtn.addEventListener('click', analyzeData);
+
+        // Initial setup
+        populateSessionSelect();
+        
+        // Debug function to check session data (for testing)
+        function debugSessionData() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionId = urlParams.get('session');
+            
+            if (sessionId) {
+                console.log('Session ID from URL:', sessionId);
+                
+                // Check both storage methods
+                const sessionFromAll = dashboardState.sessions[sessionId];
+                const sessionFromIndividual = JSON.parse(localStorage.getItem(sessionId) || 'null');
+                
+                console.log('Session from gazeTrackSessions:', sessionFromAll);
+                console.log('Session from individual key:', sessionFromIndividual);
+                
+                if (sessionFromAll || sessionFromIndividual) {
+                    const session = sessionFromAll || sessionFromIndividual;
+                    console.log('Session found with', session.stimuli?.length || 0, 'stimuli');
+                    
+                    if (session.stimuli && session.stimuli.length > 0) {
+                        console.log('Stimuli:', session.stimuli.map((s, i) => ({
+                            index: i,
+                            url: s.url.startsWith('data:') ? 'Base64 Image Data' : s.url,
+                            pathPoints: s.preferred_path?.length || 0,
+                            hasLargeImageWarning: s.url === '[LARGE_IMAGE_DATA]'
+                        })));
+                        
+                        // For participant interface compatibility, restore original URLs if needed
+                        if (sessionFromIndividual && sessionFromIndividual.stimuli) {
+                            sessionFromIndividual.stimuli.forEach(stimulus => {
+                                if (stimulus.url === '[LARGE_IMAGE_DATA]' && stimulus.originalUrl) {
+                                    console.warn('Large image data detected. Participant interface may need the original URL.');
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    console.error('No session data found for ID:', sessionId);
+                }
+                
+                // Show localStorage usage
+                let total = 0;
+                for (let key in localStorage) {
+                    if (localStorage.hasOwnProperty(key)) {
+                        total += localStorage[key].length;
+                    }
+                }
+                console.log(`LocalStorage usage: ~${(total / 1024).toFixed(1)} KB`);
+            }
+        }
+        
+        // Helper function to clear storage if needed
+        function clearStorageWarning() {
+            if (confirm('Clear all session data? This will help if you\'re running out of storage space.')) {
+                localStorage.clear();
+                dashboardState.sessions = {};
+                location.reload();
+            }
+        }
+        
+        // Add a clear storage button for debugging (you can remove this later)
+        if (window.location.search.includes('debug=1')) {
+            const debugBtn = document.createElement('button');
+            debugBtn.textContent = 'Clear All Data (Debug)';
+            debugBtn.className = 'fixed top-4 right-4 bg-red-500 text-white p-2 rounded text-sm z-50';
+            debugBtn.onclick = clearStorageWarning;
+            document.body.appendChild(debugBtn);
+        }
+        
+        // Run debug function on page load if there's a session parameter
+        if (window.location.search.includes('session=')) {
+            debugSessionData();
+        }
+    </script>
+</body>
+</html>
