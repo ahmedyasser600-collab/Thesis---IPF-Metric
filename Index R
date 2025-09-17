@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GazeTrack Insight - Research Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #F8FAFC;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        #webgazerVideoFeed, #webgazerFaceOverlay, #webgazerFaceFeedbackBox {
+            position: fixed !important;
+            top: 20px;
+            right: 20px;
+            width: 160px !important;
+            height: 120px !important;
+            border-radius: 0.75rem;
+            box-shadow: 0 4-16px rgba(0,0,0,0.2);
+            z-index: 100;
+        }
+        #gaze-dot {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: rgba(255, 0, 0, 0.5);
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.8);
+            transition: all 0.1s linear;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+        }
+        .calibration-dot {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background-color: #3B82F6;
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.7);
+            cursor: pointer;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        .modal-overlay {
+            display: flex;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(8px);
+            z-index: 9997;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            max-width: 500px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <div id="gaze-dot" class="hidden"></div>
+    
+    <div id="demographics-modal" class="modal-overlay">
+        <div class="modal-content w-full">
+            <h2 class="text-2xl font-bold mb-4">Please Provide Information</h2>
+            <form id="demographics-form" class="space-y-4">
+                <div>
+                    <label for="name" class="block text-sm font-medium text-slate-700">Name (Optional)</label>
+                    <input type="text" id="name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
+                </div>
+                <div>
+                    <label for="age" class="block text-sm font-medium text-slate-700">Age (Mandatory)</label>
+                    <select id="age" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
+                        <option value="">Select your age range</option>
+                        <option value="18-25">18-25</option>
+                        <option value="26-35">26-35</option>
+                        <option value="36-45">36-45</option>
+                        <option value="46-55">46-55</option>
+                        <option value="56+">56+</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="gender" class="block text-sm font-medium text-slate-700">Gender (Mandatory)</label>
+                    <select id="gender" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
+                        <option value="">Select your gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                        <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="country" class="block text-sm font-medium text-slate-700">Country (Mandatory)</label>
+                    <select id="country" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
+                        <option value="">Select your country</option>
+                    </select>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-blue-700 transition-all">Submit</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="consent-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold mb-4">Research Participation Consent</h2>
+            <p class="text-slate-600 mb-6">Welcome to our study. By clicking "I Agree", you consent to participate in this research. Your webcam will be used to track your eye movements for analytical purposes. No personal data will be stored or shared. You can stop at any time.</p>
+            <button id="agree-btn" class="w-full bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-blue-700 transition-all">I Agree, Start Experiment</button>
+        </div>
+    </div>
+
+    <div id="calibration-overlay" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex-col items-center justify-center z-[9998] hidden">
+        <div class="text-white text-center p-8">
+            <h2 class="text-3xl font-bold mb-2">Calibration Required</h2>
+            <p class="text-lg mb-4">Please click the dots as they appear to calibrate the eye tracker.</p>
+            <p id="calibration-instructions" class="font-semibold text-xl text-blue-300"></p>
+        </div>
+        <div id="calibration-points" class="w-full h-full absolute inset-0"></div>
+    </div>
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="mb-8 p-6 glass-card flex items-center gap-4">
+              <svg viewBox="0 0 420 100" width="150" height="auto" xmlns="http://www.w3.org/2000/svg">
+               <defs>
+                 <linearGradient id="eyeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                   <stop offset="0%" stop-color="#3B82F6"/>
+                   <stop offset="50%" stop-color="#1D4ED8"/>
+                   <stop offset="100%" stop-color="#1E40AF"/>
+                 </linearGradient>
+               </defs>
+               <circle cx="50" cy="50" r="45" fill="url(#eyeGradient)" opacity="0.1"/>
+               <path d="M 20 50 Q 50 25 80 50 Q 50 75 20 50 Z" fill="none" stroke="url(#eyeGradient)" stroke-width="3"/>
+               <circle cx="50" cy="50" r="12" fill="url(#eyeGradient)"/>
+               <circle cx="50" cy="50" r="6" fill="#0F172A"/>
+               <ellipse cx="46" cy="46" rx="2" ry="3" fill="white" opacity="0.9"/>
+               <text x="115" y="40" font-family="Inter, sans-serif" font-size="28" font-weight="700" fill="#1E40AF">GazeTrack</text>
+               <text x="115" y="60" font-family="Inter, sans-serif" font-size="18" font-weight="500" fill="#8B5CF6">Insight</text>
+             </svg>
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-700 to-violet-500 text-transparent bg-clip-text">UX Research Tool</h1>
+                <p class="text-slate-600">Participant Gaze Analysis Platform</p>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg-col-span-1 space-y-6">
+                <div class="glass-card p-6">
+                    <h2 class="text-xl font-bold mb-4 text-blue-800">Experiment Controls</h2>
+                    <div id="experiment-ui" class="hidden">
+                        <p id="stimulus-counter" class="text-center font-semibold text-slate-700 mb-4"></p>
+                        <button id="next-stimulus-btn" class="w-full bg-green-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-green-600 transition-all">
+                            Start Tracking & View Image
+                        </button>
+                    </div>
+                    <div id="status" class="mt-4 p-3 rounded-lg text-center font-medium bg-slate-200 text-slate-700">
+                        Status: Awaiting Demographics
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 glass-card p-4 relative">
+                 <h2 class="text-xl font-bold mb-4 text-blue-800 text-center">Stimulus Area</h2>
+                 <p id="test-area-instructions" class="text-slate-500 text-center mb-4">The test image will be displayed here.</p>
+                <div id="test-area" class="w-full h-[70vh] bg-white rounded-lg shadow-inner overflow-hidden relative flex items-center justify-center">
+                    <img id="stimulus-image" src="" alt="Stimulus" class="hidden max-w-full max-h-full">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TRACKING_DURATION = 15000;
+        const searchParams = new URLSearchParams(window.location.search);
+        const sessionId = searchParams.get('session');
+        const demographicsModal = document.getElementById('demographics-modal');
+        const demographicsForm = document.getElementById('demographics-form');
+        const consentModal = document.getElementById('consent-modal');
+        const agreeBtn = document.getElementById('agree-btn');
+        const statusDiv = document.getElementById('status');
+        const gazeDot = document.getElementById('gaze-dot');
+        const testArea = document.getElementById('test-area');
+        const calibrationOverlay = document.getElementById('calibration-overlay');
+        const calibrationPointsContainer = document.getElementById('calibration-points');
+        const calibrationInstructions = document.getElementById('calibration-instructions');
+        const stimulusImage = document.getElementById('stimulus-image');
+        const stimulusCounter = document.getElementById('stimulus-counter');
+        const nextStimulusBtn = document.getElementById('next-stimulus-btn');
+        const experimentUI = document.getElementById('experiment-ui');
+        const testAreaInstructions = document.getElementById('test-area-instructions');
+        const countrySelect = document.getElementById('country');
+        
+        let participantId;
+        let participantData = {};
+        let experimentData = {};
+        let stimuli = [];
+        let currentStimulusIndex = -1;
+        let isTracking = false;
+
+        const allCountries = [
+            "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Brazzaville)", "Congo (Kinshasa)", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czechia", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kosovo", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+        ];
+        
+        allCountries.forEach(country => {
+            const option = document.createElement('option');
+            option.value = country;
+            option.textContent = country;
+            countrySelect.appendChild(option);
+        });
+
+        demographicsForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            participantData = {
+                name: document.getElementById('name').value,
+                age: document.getElementById('age').value,
+                gender: document.getElementById('gender').value,
+                country: document.getElementById('country').value,
+                timestamp: new Date().toISOString()
+            };
+            participantId = `participant_${Date.now()}`;
+            demographicsModal.classList.add('hidden');
+            consentModal.classList.remove('hidden');
+            updateStatus('Please read the consent form.', 'bg-yellow-200', 'text-yellow-800');
+        });
+
+        agreeBtn.addEventListener('click', async () => {
+            consentModal.classList.add('hidden');
+            updateStatus('Initializing & requesting camera...', 'bg-blue-200', 'text-blue-800');
+            
+            try {
+                const sessionData = JSON.parse(localStorage.getItem('gazeTrackSessions')) || {};
+                stimuli = sessionData[sessionId] ? sessionData[sessionId].stimuli : [];
+                if (stimuli.length === 0) {
+                     throw new Error('No stimuli found for this session ID.');
+                }
+                
+                await webgazer.setGazeListener((data, elapsedTime) => {
+                    if (data == null || !isTracking) return;
+                    gazeDot.style.left = `${data.x}px`;
+                    gazeDot.style.top = `${data.y}px`;
+                    const testAreaRect = testArea.getBoundingClientRect();
+                    if (data.x >= testAreaRect.left && data.x <= testAreaRect.right && data.y >= testAreaRect.top && data.y <= testAreaRect.bottom) {
+                        const stimulus = stimuli[currentStimulusIndex];
+                        const img = stimulusImage;
+                        const scaleX = img.naturalWidth / img.offsetWidth;
+                        const scaleY = img.naturalHeight / img.offsetHeight;
+                        const relativeX = (data.x - testAreaRect.left) * scaleX;
+                        const relativeY = (data.y - testAreaRect.top) * scaleY;
+                        experimentData[stimulus.url].gaze_points.push({ x: relativeX, y: relativeY });
+                    }
+                }).begin();
+                webgazer.showPredictionPoints(false);
+                updateStatus('Ready to Calibrate.', 'bg-yellow-200', 'text-yellow-800');
+                startCalibration();
+            } catch (error) {
+                console.error("Initialization failed:", error);
+                updateStatus('Initialization failed: ' + error.message, 'bg-red-200', 'text-red-800');
+            }
+        });
+
+        function startCalibration() {
+            calibrationOverlay.classList.remove('hidden');
+            const points = [
+                { x: '10%', y: '10%' }, { x: '50%', y: '10%' }, { x: '90%', y: '10%' },
+                { x: '10%', y: '50%' }, { x: '50%', y: '50%' }, { x: '90%', y: '50%' },
+                { x: '10%', y: '90%' }, { x: '50%', y: '90%' }, { x: '90%', y: '90%' },
+            ];
+            let pointIndex = 0;
+            function showNextPoint() {
+                calibrationPointsContainer.innerHTML = '';
+                if (pointIndex >= points.length) {
+                    calibrationOverlay.classList.add('hidden');
+                    updateStatus('Calibration Complete.', 'bg-blue-200', 'text-blue-800');
+                    experimentUI.classList.remove('hidden');
+                    loadNextStimulus();
+                    return;
+                }
+                calibrationInstructions.textContent = `Click dot ${pointIndex + 1} of ${points.length}`;
+                const point = points[pointIndex];
+                const dot = document.createElement('div');
+                dot.className = 'calibration-dot';
+                dot.style.left = point.x;
+                dot.style.top = point.y;
+                dot.textContent = pointIndex + 1;
+                dot.onclick = () => {
+                    pointIndex++;
+                    showNextPoint();
+                };
+                calibrationPointsContainer.appendChild(dot);
+            }
+            showNextPoint();
+        }
+
+        function loadNextStimulus() {
+            currentStimulusIndex++;
+            if (currentStimulusIndex >= stimuli.length) {
+                endExperiment();
+                return;
+            }
+            const stimulus = stimuli[currentStimulusIndex];
+            experimentData[stimulus.url] = { gaze_points: [], preferred_path: stimulus.preferred_path };
+            stimulusImage.src = stimulus.url;
+            stimulusImage.classList.add('hidden');
+            testAreaInstructions.classList.remove('hidden');
+            stimulusCounter.textContent = `Image ${currentStimulusIndex + 1} of ${stimuli.length}`;
+            nextStimulusBtn.textContent = `Start Tracking & View Image ${currentStimulusIndex + 1}`;
+            nextStimulusBtn.disabled = false;
+            updateStatus(`Ready for image ${currentStimulusIndex + 1}`, 'bg-yellow-200', 'text-yellow-800');
+        }
+
+        function startTrial() {
+            isTracking = true;
+            nextStimulusBtn.disabled = true;
+            gazeDot.classList.remove('hidden');
+            stimulusImage.classList.remove('hidden');
+            testAreaInstructions.classList.add('hidden');
+            updateStatus(`Tracking image ${currentStimulusIndex + 1}...`, 'bg-green-200', 'text-green-800');
+            setTimeout(stopTrial, TRACKING_DURATION);
+        }
+
+        function stopTrial() {
+            isTracking = false;
+            gazeDot.classList.add('hidden');
+            const sessionData = JSON.parse(localStorage.getItem('gazeTrackSessions')) || {};
+            if (sessionData[sessionId]) {
+                const participantSessionData = sessionData[sessionId].participants || {};
+                participantSessionData[participantId] = {
+                    demographics: participantData,
+                    gazeData: experimentData
+                };
+                sessionData[sessionId].participants = participantSessionData;
+                localStorage.setItem('gazeTrackSessions', JSON.stringify(sessionData));
+            }
+            updateStatus(`Finished image ${currentStimulusIndex + 1}.`, 'bg-blue-200', 'text-blue-800');
+            loadNextStimulus();
+        }
+
+        function endExperiment() {
+            experimentUI.classList.add('hidden');
+            stimulusImage.classList.add('hidden');
+            testAreaInstructions.textContent = "Experiment complete. Thank you!";
+            testAreaInstructions.classList.remove('hidden');
+            updateStatus('Experiment Complete!', 'bg-blue-200', 'text-blue-800');
+        }
+
+        function updateStatus(message, bgColor, textColor) {
+            statusDiv.textContent = `Status: ${message}`;
+            statusDiv.className = `mt-4 p-3 rounded-lg text-center font-medium ${bgColor} ${textColor}`;
+        }
+        
+        nextStimulusBtn.addEventListener('click', startTrial);
+    </script>
+</body>
+</html>
